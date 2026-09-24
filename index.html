@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Kuis C++ Berbasis Firebase</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .card {
+      background: #ffffff;
+      width: 100%;
+      max-width: 750px;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+    .hidden { display: none !important; }
+    
+    /* Login Styling */
+    .login-container h2 { margin-top: 0; color: #1f2937; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #374151; }
+    .form-group input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+    
+    /* Quiz & Navigation Styling */
+    .participant-info { font-weight: 600; color: #333; margin-bottom: 12px; }
+    .progress-bar { height: 6px; background: #e0e0e0; border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #2563eb; width: 0%; transition: width 0.3s ease; }
+    .question-title { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-bottom: 20px; white-space: pre-line; }
+    .options-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+    .option-item { display: flex; align-items: center; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+    .option-item:hover { background-color: #f8fafc; border-color: #9ca3af; }
+    .option-item input { margin-right: 12px; }
+    .btn-group { display: flex; justify-content: space-between; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .btn-secondary { background-color: #e5e7eb; color: #374151; }
+    .btn-primary, .btn-submit { background-color: #2563eb; color: #ffffff; width: 100%; }
+    .nav-title { font-weight: 700; color: #1f2937; margin-bottom: 12px; }
+    .nav-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 20px; }
+    .nav-btn { padding: 10px; background-color: #e5e7eb; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; color: #374151; }
+    .nav-btn.active { background-color: #2563eb; color: white; }
+    .nav-btn.answered { border: 2px solid #2563eb; }
+    
+    /* Admin Table */
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; font-size: 0.9rem; }
+    th { background-color: #f3f4f6; }
+    .modal { background: rgba(0,0,0,0.5); position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 24px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+  <!-- HALAMAN LOGIN -->
+  <div id="login-view" class="card login-container">
+    <h2>Login Aplikasi Kuis</h2>
+    <p style="color: #6b7280; font-size: 0.9rem;">Masukkan NIS & Password (Siswa) atau akses sebagai Admin.</p>
+    <div class="form-group">
+      <label>NIS / Username</label>
+      <input type="text" id="login-id" placeholder="Masukkan NIS atau username admin">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="Masukkan password">
+    </div>
+    <button class="btn btn-primary" onclick="handleLogin()">Masuk</button>
+    <p id="login-error" style="color: #dc2626; font-size: 0.85rem; margin-top: 10px;"></p>
+  </div>
+
+  <!-- HALAMAN KUIS SISWA -->
+  <div id="quiz-view" class="card hidden" style="max-width: 750px;">
+    <div class="participant-info" id="participant-display">Peserta: -</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-bar-fill"></div>
+    </div>
+    <div class="question-title" id="question-text">Memuat soal...</div>
+    <div class="options-container" id="options-container"></div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" onclick="prevQuestion()">← Sebelumnya</button>
+      <button class="btn btn-primary" style="width: auto;" onclick="nextQuestion()">Berikutnya →</button>
+    </div>
+  </div>
+  <div id="quiz-nav-card" class="card hidden" style="max-width: 750px;">
+    <div class="nav-title">Navigasi Soal</div>
+    <div class="nav-grid" id="nav-grid"></div>
+    <button class="btn btn-submit" style="padding: 12px;" onclick="submitQuiz()">Selesai & Kumpulkan Jawaban</button>
+  </div>
+
+  <!-- HALAMAN ADMIN -->
+  <div id="admin-view" class="card hidden" style="max-width: 900px;">
+    <h2>Panel Admin - Rekap Nilai Siswa</h2>
+    <p style="color: #6b7280;">Daftar siswa, status pengerjaan, nilai, dan detail jawaban.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>NIS</th>
+          <th>Nama Siswa</th>
+          <th>Status</th>
+          <th>Nilai</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="admin-student-list">
+        <!-- Dirender dinamis -->
+      </tbody>
+    </table>
+    <button class="btn btn-secondary" style="margin-top: 20px;" onclick="location.reload()">Keluar / Logout</button>
+  </div>
+
+  <!-- MODAL DETAIL JAWABAN (ADMIN) -->
+  <div id="detail-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Detail Jawaban Siswa</h3>
+      <div id="modal-body"></div>
+      <button class="btn btn-secondary" style="margin-top: 15px; width: 100%;" onclick="closeModal()">Tutup</button>
+    </div>
+  </div>
+
+  <!-- SCRIPT FIREBASE & LOGIKA APLIKASI -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCPAHvjv6ko1xUSFcn5cqs5twa3-cn9DAw",
+      authDomain: "latihancpp.firebaseapp.com",
+      projectId: "latihancpp",
+      storageBucket: "latihancpp.firebasestorage.app",
+      messagingSenderId: "395418402972",
+      appId: "1:395418402972:web:1eb16dda0e2b8a6f7b2d59",
+      measurementId: "G-EDZEC7HC1N"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let questionsData = {};
+    let currentId = 1;
+    const totalQuestions = 25;
+    const userAnswers = {};
+    let loggedInStudentKey = null;
+    let globalDatabaseData = {};
+
+    window.handleLogin = async function() {
+      const inputId = document.getElementById("login-id").value.trim();
+      const inputPass = document.getElementById("login-pass").value.trim();
+      const errorEl = document.getElementById("login-error");
+      errorEl.innerText = "";
+
+      if (!inputId || !inputPass) {
+        errorEl.innerText = "NIS dan Password harus diisi!";
+        return;
+      }
+
+      const dbRef = ref(db);
+      try {
+        const snapshot = await get(dbRef);
+        if (!snapshot.exists()) {
+          errorEl.innerText = "Database kosong.";
+          return;
+        }
+
+        globalDatabaseData = snapshot.val();
+
+        // 1. Cek Login Admin
+        if (globalDatabaseData.admin && inputId === globalDatabaseData.admin.username && inputPass === globalDatabaseData.admin.password) {
+          document.getElementById("login-view").classList.add("hidden");
+          document.getElementById("admin-view").classList.remove("hidden");
+          renderAdminDashboard(globalDatabaseData.students || {}, globalDatabaseData.questions || {});
+          return;
+        }
+
+        // 2. Cek Login Siswa
+        let foundStudentKey = null;
+        let studentData = null;
+
+        if (globalDatabaseData.students) {
+          for (const [key, student] of Object.entries(globalDatabaseData.students)) {
+            if (student.nis === inputId && student.password === inputPass) {
+              foundStudentKey = key;
+              studentData = student;
+              break;
+            }
+          }
+        }
+
+        if (studentData) {
+          if (studentData.hasSubmitted) {
+            errorEl.innerText = "Akses ditolak! Anda sudah pernah mengerjakan dan mengirimkan kuis ini.";
+            return;
+          }
+
+          loggedInStudentKey = foundStudentKey;
+          questionsData = globalDatabaseData.questions || {};
+
+          document.getElementById("login-view").classList.add("hidden");
+          document.getElementById("quiz-view").classList.remove("hidden");
+          document.getElementById("quiz-nav-card").classList.remove("hidden");
+          document.getElementById("participant-display").innerText = `Peserta: ${studentData.nama} (NIS: ${studentData.nis})`;
+          
+          renderQuestion(currentId);
+          renderNavigationGrid();
+        } else {
+          errorEl.innerText = "NIS atau Password salah!";
+        }
+
+      } catch (err) {
+        console.error(err);
+        errorEl.innerText = "Terjadi kesalahan koneksi database.";
+      }
+    };
+
+    function renderQuestion(id) {
+      const qKey = "q" + id;
+      const question = questionsData[qKey];
+      if (!question) return;
+
+      document.getElementById("question-text").innerText = `${question.id}. ${question.question}`;
+      
+      const optionsContainer = document.getElementById("options-container");
+      optionsContainer.innerHTML = "";
+
+      for (const [key, value] of Object.entries(question.options)) {
+        const isChecked = userAnswers[id] === key ? "checked" : "";
+        optionsContainer.innerHTML += `
+          <label class="option-item">
+            <input type="radio" name="answer" value="${key}" ${isChecked} onclick="window.saveAnswer(${id}, '${key}')">
+            <span>${key}. ${value}</span>
+          </label>
+        `;
+      }
+      updateProgress();
+    }
+
+    window.saveAnswer = function(id, optionKey) {
+      userAnswers[id] = optionKey;
+      updateNavigationGridUI();
+    }
+
+    window.goToQuestion = function(id) {
+      currentId = id;
+      renderQuestion(currentId);
+      updateNavigationGridUI();
+    }
+
+    window.nextQuestion = function() {
+      if (currentId < totalQuestions) {
+        currentId++;
+        renderQuestion(currentId);
+        updateNavigationGridUI();
+      }
+    }
+
+    window.prevQuestion = function() {
+      if (currentId > 1) {
+        currentId--;
+        renderQuestion(currentId);
+        updateNavigationGridUI();
+      }
+    }
+
+    function renderNavigationGrid() {
+      const navContainer = document.getElementById("nav-grid");
+      navContainer.innerHTML = "";
+      for (let i = 1; i <= totalQuestions; i++) {
+        navContainer.innerHTML += `
+          <button id="nav-btn-${i}" class="nav-btn" onclick="window.goToQuestion(${i})">${i}</button>
+        `;
+      }
+      updateNavigationGridUI();
+    }
+
+    function updateNavigationGridUI() {
+      for (let i = 1; i <= totalQuestions; i++) {
+        const btn = document.getElementById(`nav-btn-${i}`);
+        if (btn) {
+          if (i === currentId) {
+            btn.classList.add("active");
+          } else {
+            btn.classList.remove("active");
+          }
+          if (userAnswers[i]) {
+            btn.classList.add("answered");
+          }
+        }
+      }
+    }
+
+    function updateProgress() {
+      const answeredCount = Object.keys(userAnswers).length;
+      const percentage = (answeredCount / totalQuestions) * 100;
+      document.getElementById("progress-bar-fill").style.width = percentage + "%";
+    }
+
+    window.submitQuiz = async function() {
+      if (!confirm("Apakah Anda yakin ingin mengumpulkan jawaban? Anda tidak dapat login kembali setelah ini.")) {
+        return;
+      }
+
+      try {
+        let score = 0;
+        for (let i = 1; i <= totalQuestions; i++) {
+          const qKey = "q" + i;
+          if (questionsData[qKey] && userAnswers[i] === questionsData[qKey].correct) {
+            score += (100 / totalQuestions);
+          }
+        }
+        const finalScore = Math.round(score);
+
+        const studentRef = ref(db, `students/${loggedInStudentKey}`);
+        await update(studentRef, {
+          hasSubmitted: true,
+          score: finalScore,
+          answers: userAnswers
+        });
+
+        alert("Kuis berhasil dikumpulkan! Terima kasih.");
+        location.reload(); 
+      } catch (error) {
+        console.error("Gagal menyimpan hasil:", error);
+        alert("Terjadi kesalahan saat mengirim jawaban.");
+      }
+    };
+
+    function renderAdminDashboard(students, questions) {
+      const tbody = document.getElementById("admin-student-list");
+      tbody.innerHTML = "";
+      for (const [key, student] of Object.entries(students)) {
+        const statusText = student.hasSubmitted 
+          ? '<span style="color: green; font-weight: bold;">Sudah Mengerjakan</span>' 
+          : '<span style="color: orange;">Belum Mengerjakan</span>';
+        
+        const scoreText = student.hasSubmitted ? `<b>${student.score}</b>` : '-';
+        const actionBtn = student.hasSubmitted 
+          ? `<button class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem;" onclick="showStudentDetail('${key}')">Lihat Detail</button>` 
+          : '-';
+
+        tbody.innerHTML += `
+          <tr>
+            <td>${student.nis}</td>
+            <td>${student.nama || '-'}</td>
+            <td>${statusText}</td>
+            <td>${scoreText}</td>
+            <td>${actionBtn}</td>
+          </tr>
+        `;
+      }
+    }
+
+    window.showStudentDetail = function(studentKey) {
+      const student = globalDatabaseData.students[studentKey];
+      const questions = globalDatabaseData.questions;
+      const modalBody = document.getElementById("modal-body");
+      
+      let html = `<p><b>Nama:</b> ${student.nama || '-'}</p>`;
+      html += `<p><b>NIS:</b> ${student.nis}</p>`;
+      html += `<p><b>Nilai Akhir:</b> <span style="color: blue; font-size: 1.1rem;">${student.score || 0}</span></p>`;
+      html += `<hr><p><b>Detail Jawaban:</b></p><ul>`;
+
+      for (let i = 1; i <= totalQuestions; i++) {
+        const qKey = "q" + i;
+        const q = questions[qKey];
+        const studentAns = student.answers && student.answers[i] ? student.answers[i] : "Tidak dijawab";
+        const isCorrect = studentAns === q.correct;
+        const color = isCorrect ? "green" : "red";
+
+        html += `<li><b>Soal ${i}:</b> Jawab: <span style="color:${color}; font-weight:bold;">${studentAns}</span> (Kunci: ${q.correct})</li>`;
+      }
+      html += `</ul>`;
+
+      modalBody.innerHTML = html;
+      document.getElementById("detail-modal").classList.remove("hidden");
+    };
+
+    window.closeModal = function() {
+      document.getElementById("detail-modal").classList.add("hidden");
+    };
+  </script>
+</body>
+</html>
